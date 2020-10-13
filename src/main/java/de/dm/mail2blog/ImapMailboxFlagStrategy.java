@@ -16,7 +16,7 @@ public class ImapMailboxFlagStrategy implements IMailboxFlagFeature
     @NonNull private Mailbox mailbox;
 
     /**
-     * Get/create a folder below the default folder.
+     * Get/create a folder below the inbox or the root folder.
      *
      * @param name The name of the folder to create.
      * @return The created folder
@@ -24,18 +24,34 @@ public class ImapMailboxFlagStrategy implements IMailboxFlagFeature
      */
     private Folder getOrCreateFolder(@NonNull String name) throws MailboxException {
         Folder folder;
+        try {
+            folder = getOrCreateSubfolder(mailbox.getInbox(), name);
+        } catch (MailboxException inboxError) {
+            try {
+                log.info("failed to create folder '" + name + "' below INBOX, falling back to ROOT folder", inboxError);
+                folder = getOrCreateSubfolder(mailbox.getDefaultFolder(), name);
+            } catch (MailboxException rootError) {
+                throw new MailboxException("failed to get or create folder '" + name + '"', rootError);
+            }
+        }
+
+        return folder;
+    }
+
+    private Folder getOrCreateSubfolder(Folder parent, @NonNull String name) throws MailboxException {
+        Folder folder;
 
         try {
-            folder = mailbox.getInbox().getFolder(name);
+            folder = parent.getFolder(name);
         } catch (MessagingException me) {
-            throw new MailboxException("Failed to get folder " + name + ": " + me.getMessage());
+            throw new MailboxException("failed to get folder '" + name + "'", me);
         }
 
         boolean folder_exists = false;
         try {
             folder_exists = folder.exists();
         } catch (MessagingException me) {
-            throw new MailboxException("Failed to check if folder " + name + " exists: " + me.getMessage(), me);
+            throw new MailboxException("failed to check if folder '" + name + "' exists", me);
 
         }
 
@@ -43,10 +59,10 @@ public class ImapMailboxFlagStrategy implements IMailboxFlagFeature
         if (!folder_exists) {
             try {
                 if (!folder.create(Folder.HOLDS_MESSAGES)) {
-                    throw new MailboxException("Failed to create " + name + " folder.");
+                    throw new MailboxException("failed to create '" + name + "' folder");
                 }
             } catch (MessagingException me) {
-                throw new MailboxException("Failed to create " + name + " folder: " + me.getMessage(), me);
+                throw new MailboxException("failed to create '" + name + "' folder", me);
             }
         }
 
@@ -55,9 +71,9 @@ public class ImapMailboxFlagStrategy implements IMailboxFlagFeature
             folder.open(Folder.READ_WRITE);
         } catch (FolderNotFoundException fnfe)
         {
-            throw new MailboxException("Could not find folder " + name + ": " + fnfe.getMessage(), fnfe);
+            throw new MailboxException("could not find folder '" + name + "'", fnfe);
         } catch (MessagingException e) {
-            throw new MailboxException("Could not open folder " + name + ": " + e.getMessage(), e);
+            throw new MailboxException("could not open folder '" + name + "'", e);
         }
 
         return folder;
@@ -81,7 +97,7 @@ public class ImapMailboxFlagStrategy implements IMailboxFlagFeature
         }
         catch (MessagingException e)
         {
-            throw new MailboxException("Failed to move message: " + e.getMessage());
+            throw new MailboxException("failed to move message", e);
         }
     }
 
@@ -96,7 +112,7 @@ public class ImapMailboxFlagStrategy implements IMailboxFlagFeature
         try {
             to.close(true);
         } catch (MessagingException me) {
-            throw new MailboxException("Failed to close folder: " + me.getMessage());
+            throw new MailboxException("failed to close folder", me);
         }
     }
 
@@ -111,7 +127,7 @@ public class ImapMailboxFlagStrategy implements IMailboxFlagFeature
         try {
             to.close(true);
         } catch (MessagingException me) {
-            throw new MailboxException("Failed to close folder: " + me.getMessage());
+            throw new MailboxException("failed to close folder", me);
         }
     }
 }

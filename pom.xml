@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>de.dm.mail2blog</groupId>
     <artifactId>mail2blog</artifactId>
-    <version>1.2</version>
+    <version>2.2</version>
     <organization>
         <name>dm-drogerie markt GmbH + Co. KG</name>
         <url>https://www.dm.de/arbeiten-und-lernen/arbeiten-bei-uns/filiadata-c534052.html</url>
@@ -14,7 +15,8 @@
             <name>Sebastian Gellweiler</name>
             <email>mail2blog.dmDeutschland@dm.de</email>
             <organization>dm-drogerie markt GmbH + Co. KG</organization>
-            <organizationUrl>https://www.dm.de/arbeiten-und-lernen/arbeiten-bei-uns/filiadata-c534052.html</organizationUrl>
+            <organizationUrl>https://www.dm.de/arbeiten-und-lernen/arbeiten-bei-uns/filiadata-c534052.html
+            </organizationUrl>
         </developer>
     </developers>
     <licenses>
@@ -24,9 +26,9 @@
             <distribution>repo</distribution>
         </license>
     </licenses>
-    <name>Mail to Blog Plugin</name>
+    <name>Email to Confluence</name>
     <packaging>atlassian-plugin</packaging>
-    <description>Converts emails to confluence blog posts</description>
+    <description>Converts emails to confluence pages/blog posts</description>
     <repositories>
         <repository>
             <id>maven-atlassian-com</id>
@@ -35,11 +37,40 @@
         </repository>
     </repositories>
     <dependencies>
-        <!-- Testing -->
+        <dependency>
+            <groupId>com.icegreen</groupId>
+            <artifactId>greenmail</artifactId>
+            <!-- We need to use snapshot version because of issues with mulipart emails & imap in 1.5.x. -->
+            <!-- For example https://github.com/greenmail-mail-test/greenmail/issues/172 -->
+            <version>1.5.4</version>
+            <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.sun.mail</groupId>
+                    <artifactId>javax.mail</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>de.dm.mail2blog</groupId>
+            <artifactId>base</artifactId>
+            <version>2.1.5</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.sun.mail</groupId>
+                    <artifactId>javax.mail</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-api</artifactId>
+                </exclusion>
+            </exclusions>
+            <scope>compile</scope>
+        </dependency>
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
-            <version>${junit.version}</version>
+            <version>4.12</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -55,59 +86,28 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-nop</artifactId>
-            <version>1.7.24</version>
-            <scope>test</scope>
-        </dependency>
-        <!-- WIRED TEST RUNNER DEPENDENCIES -->
-        <dependency>
-            <groupId>com.atlassian.plugins</groupId>
-            <artifactId>atlassian-plugins-osgi-testrunner</artifactId>
-            <version>${plugin.testrunner.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
             <version>2.2.2-atlassian-1</version>
-        </dependency>
-        <!-- OWASP HTML filters -->
-        <dependency>
-            <groupId>com.googlecode.owasp-java-html-sanitizer</groupId>
-            <artifactId>owasp-java-html-sanitizer</artifactId>
-            <version>20160924.1</version>
+            <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <version>2.8.7</version>
+            <version>2.9.6</version>
+            <scope>compile</scope>
         </dependency>
-        <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
-            <version>1.16.12</version>
+            <version>1.18.2</version>
             <scope>provided</scope>
         </dependency>
-        <!-- Additional testing stuff (Mockito, Javamail-mock2) -->
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>${mockito.version}</version>
+            <version>2.23.0</version>
             <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>de.saly</groupId>
-            <artifactId>javamail-mock2-halfmock</artifactId>
-            <version>0.5-beta4</version>
-            <scope>test</scope>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.sun.mail</groupId>
-                    <artifactId>javax.mail</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.springframework</groupId>
@@ -128,12 +128,6 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>javax.xml.bind</groupId>
-            <artifactId>jaxb-api</artifactId>
-            <version>2.1</version>
-            <scope>provided</scope>
-        </dependency>
-        <dependency>
             <groupId>com.atlassian.plugins.rest</groupId>
             <artifactId>atlassian-rest-common</artifactId>
             <version>1.0.2</version>
@@ -143,10 +137,35 @@
     <build>
         <plugins>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.0.2</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>test-jar</goal>
+                        </goals>
+                        <configuration>
+                            <excludes>
+                                <exclude>de/dm/mail2blog/*</exclude>
+                                <exclude>de/dm/mail2blog</exclude>
+                            </excludes>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <groupId>com.atlassian.maven.plugins</groupId>
                 <artifactId>maven-confluence-plugin</artifactId>
                 <version>${amps.version}</version>
                 <extensions>true</extensions>
+                <executions>
+                    <!-- Do not create test.jar with maven-confluence-plugin, instead use maven-jar-plugin configured above -->
+                    <execution>
+                        <id>default-test-jar</id>
+                        <phase>none</phase>
+                    </execution>
+                </executions>
                 <configuration>
                     <productVersion>${confluence.version}</productVersion>
                     <productDataVersion>${confluence.data.version}</productDataVersion>
@@ -157,12 +176,30 @@
                     <instructions>
                         <Atlassian-Plugin-Key>${atlassian.plugin.key}</Atlassian-Plugin-Key>
                         <!-- Add package to export here -->
-                        <Export-Package>de.dm.mail2blog, it.de.dm.mail2blog</Export-Package>
+                        <Export-Package>de.dm.mail2blog, it.de.dm.mail2blog, de.dm.mail2blog.base</Export-Package>
                         <!-- Add package import here -->
-                        <Import-Package>org.springframework.osgi.*;resolution:="optional", org.eclipse.gemini.blueprint.*;resolution:="optional",* com.atlassian.sal.api.transaction, com.atlassian.bandana, *</Import-Package>
+                        <Import-Package>org.springframework.osgi.*;resolution:="optional",
+                            org.eclipse.gemini.blueprint.*;resolution:="optional", *;resolution:="optional"
+                        </Import-Package>
                         <!-- Ensure plugin is spring powered -->
                         <Spring-Context>*</Spring-Context>
                     </instructions>
+
+
+                    <testBundleExcludes>
+                        <testBundleExclude>
+                            <groupId>de.dm.mail2blog</groupId>
+                            <artifactId>base</artifactId>
+                        </testBundleExclude>
+                        <testBundleExclude>
+                            <groupId>com.fasterxml.jackson.core</groupId>
+                            <artifactId>jackson-databind</artifactId>
+                        </testBundleExclude>
+                        <testBundleExclude>
+                            <groupId>com.google.code.gson</groupId>
+                            <artifactId>gson</artifactId>
+                        </testBundleExclude>
+                    </testBundleExcludes>
                 </configuration>
             </plugin>
             <plugin>
@@ -211,17 +248,13 @@
         </plugins>
     </build>
     <properties>
-        <confluence.version>6.8.0</confluence.version>
-        <confluence.data.version>6.8.0</confluence.data.version>
-        <amps.version>6.3.15</amps.version>
+        <confluence.version>6.14.0</confluence.version>
+        <confluence.data.version>6.14.0</confluence.data.version>
+        <amps.version>6.3.21</amps.version>
         <plugin.testrunner.version>1.2.3</plugin.testrunner.version>
         <atlassian.spring.scanner.version>2.0.1</atlassian.spring.scanner.version>
         <!-- This key is used to keep the consistency between the key in atlassian-plugin.xml and the key to generate bundle. -->
         <atlassian.plugin.key>${project.groupId}.${project.artifactId}</atlassian.plugin.key>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
-        <junit.version>4.10</junit.version>
-        <mockito.version>2.16.0</mockito.version>
     </properties>
 </project>

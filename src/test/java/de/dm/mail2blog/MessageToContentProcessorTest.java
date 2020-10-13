@@ -1,17 +1,27 @@
-package ut.de.dm.mail2blog;
+package de.dm.mail2blog;
 
 import com.atlassian.confluence.core.DefaultSaveContext;
 import com.atlassian.confluence.pages.Attachment;
 import com.atlassian.confluence.pages.AttachmentManager;
 import com.atlassian.confluence.pages.BlogPost;
+import com.atlassian.confluence.pages.Page;
 import com.atlassian.confluence.pages.PageManager;
 import com.atlassian.confluence.setup.settings.Settings;
 import com.atlassian.confluence.setup.settings.SettingsManager;
 import com.atlassian.confluence.spaces.Space;
 import com.atlassian.confluence.user.ConfluenceUser;
+import com.atlassian.confluence.user.UserAccessor;
+import com.atlassian.core.util.DateUtils;
 import com.atlassian.user.Group;
 import com.atlassian.user.GroupManager;
-import de.dm.mail2blog.*;
+import com.atlassian.user.User;
+import com.atlassian.user.search.SearchResult;
+import com.atlassian.user.search.page.Pager;
+import de.dm.mail2blog.base.AttachementData;
+import de.dm.mail2blog.base.ContentTypes;
+import de.dm.mail2blog.base.Mail2BlogBaseConfiguration;
+import de.dm.mail2blog.base.MailPartData;
+import de.dm.mail2blog.base.MessageParser;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -23,12 +33,25 @@ import javax.mail.Message;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
 
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.isA;
+import static org.mockito.Mockito.same;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
-public class MessageToBlogPostProcessorTest
+public class MessageToContentProcessorTest
 {
 
     static final String BASE_URL = "http://example.org/";
@@ -36,6 +59,10 @@ public class MessageToBlogPostProcessorTest
     static final String ATTACHMENT_TYPE = "image/gif";
     static final String ATTACHMENT_ID = "IMAGE";
     static final String ATTACHMENT_URL = BASE_URL + ATTACHMENT_NAME;
+    static final long   ATTACHMENT_SIZE = 42l;
+    static final Date   ATTACHMENT_CREATION_DATE = DateUtils.getDateDay(1989, 11, 9);
+    static final Date   ATTACHMENT_MODIFICATION_DATE = DateUtils.getDateDay(1990, 10, 3);
+    static final String MESSAGE_FROM = "alice@example.org";
     static final String MESSAGE_SUBJECT = "Hello World";
     static final String MESSAGE_KEYWORD = "LOOKFORME";
     static final String MESSAGE_CONTENT = "<h1>Hello World</h1><p>" + MESSAGE_KEYWORD + "<img src=\"cid:" + ATTACHMENT_ID + "\" /></p>";
@@ -54,14 +81,22 @@ public class MessageToBlogPostProcessorTest
     @Mock private Message message;
     @Mock private ConfluenceUser user;
     @Mock private Space space;
-    @Mock private Attachment attachment;
     @Mock private Group group;
+    @Mock private Attachment attachment;
+    @Mock private UserAccessor userAccessor;
+    @Mock SearchResult searchResult;
+    @Mock Pager pager;
 
-    private void autowire(MessageToBlogPostProcessor processor) {
+    private MailConfigurationWrapper mailConfigurationWrapper;
+
+    private void autowire(MessageToContentProcessor processor) {
         doReturn(attachmentManager).when(processor).getAttachmentManager();
         doReturn(pageManager).when(processor).getPageManager();
         doReturn(groupManager).when(processor).getGroupManager();
         doReturn(settingsManager).when(processor).getSettingsManager();
+        doReturn(userAccessor).when(processor).getUserAccessor();
+        doReturn(messageParser).when(processor).newMessageParser(any(Message.class), any(Mail2BlogBaseConfiguration.class));
+        doReturn(attachment).when(processor).newAttachment();
     }
 
     @Before
@@ -70,6 +105,7 @@ public class MessageToBlogPostProcessorTest
         // Mock global base url.
         when(settingsManager.getGlobalSettings()).thenReturn(globalSettings);
         when(globalSettings.getBaseUrl()).thenReturn(BASE_URL);
+        when(globalSettings.getAttachmentMaxSize()).thenReturn(1024*1024*100L); // 100mb
 
         // Stub content to parse.
         ArrayList<MailPartData> content = new ArrayList<MailPartData>();
@@ -81,16 +117,32 @@ public class MessageToBlogPostProcessorTest
 
         when(attachment.getDownloadPath()).thenReturn(ATTACHMENT_NAME);
         when(attachment.getDisplayTitle()).thenReturn(ATTACHMENT_NAME);
+
         MailPartData attachmentPart = new MailPartData();
         attachmentPart.setContentID("<" + ATTACHMENT_ID + ">");
         attachmentPart.setContentType(ATTACHMENT_TYPE);
-        attachmentPart.setAttachment(attachment);
+        attachmentPart.setAttachementData(AttachementData.builder()
+            .filename(ATTACHMENT_NAME)
+            .mediaType(ATTACHMENT_TYPE)
+            .fileSize(ATTACHMENT_SIZE)
+            .lastModificationDate(ATTACHMENT_MODIFICATION_DATE)
+            .creationDate(ATTACHMENT_CREATION_DATE)
+        .build());
         attachmentPart.setStream(new ByteArrayInputStream(new byte[]{'a', 'b', 'c'}));
         content.add(attachmentPart);
 
         when(message.getSubject()).thenReturn(MESSAGE_SUBJECT);
+        when(messageParser.getSenderEmail()).thenReturn(MESSAGE_FROM);
         when(messageParser.getContent()).thenReturn(content);
-        when(messageParser.getSender()).thenReturn(user);
+
+        when(userAccessor.getUsersByEmail(MESSAGE_FROM)).thenReturn(searchResult);
+        when(searchResult.pager()).thenReturn(pager);
+        List<User> users = new ArrayList<User>();
+        users.add(user);
+        when(pager.getCurrentPage()).thenReturn(users);
+
+        mailConfigurationWrapper = spy(new MailConfigurationWrapper(MailConfiguration.builder().build()));
+        when(mailConfigurationWrapper.getSettingsManager()).thenReturn(settingsManager);
     }
 
     /**
@@ -98,15 +150,12 @@ public class MessageToBlogPostProcessorTest
      */
     @Test
     public void testProcess() throws Exception {
-        MailConfiguration mailConfiguration = MailConfiguration.builder().build();
-
         // Generate processor.
-        MessageToBlogPostProcessor processor = spy(new MessageToBlogPostProcessor(new MailConfigurationWrapper(mailConfiguration)));
-        doReturn(messageParser).when(processor).newMessageParser(any(Message.class), any(MailConfigurationWrapper.class));
+        MessageToContentProcessor processor = spy(new MessageToContentProcessor(mailConfigurationWrapper));
         autowire(processor);
 
         // Process message.
-        processor.process(space, message);
+        processor.process(space, message, ContentTypes.BlogPost);
 
         // Check that a blog post was saved and capture the saved blog post.
         ArgumentCaptor<BlogPost> argBlog = ArgumentCaptor.forClass(BlogPost.class);
@@ -119,6 +168,11 @@ public class MessageToBlogPostProcessorTest
 
         // Check attachment.
         verify(attachment).setCreator(user);
+        verify(attachment).setFileName(ATTACHMENT_NAME);
+        verify(attachment).setMediaType(ATTACHMENT_TYPE);
+        verify(attachment).setFileSize(ATTACHMENT_SIZE);
+        verify(attachment).setCreationDate(ATTACHMENT_CREATION_DATE);
+        verify(attachment).setLastModificationDate(ATTACHMENT_MODIFICATION_DATE);
         verify(attachmentManager).saveAttachment(same(attachment), eq((Attachment)null), isA(InputStream.class));
 
         // Check content.
@@ -146,25 +200,22 @@ public class MessageToBlogPostProcessorTest
      */
     @Test
     public void testGalleryMacro() throws Exception {
-        MailConfiguration mailConfiguration = MailConfiguration.builder()
-        .gallerymacro(true)
-        .build();
+        mailConfigurationWrapper.getMailConfiguration().setGallerymacro(true);
 
         // Generate processor.
-        MessageToBlogPostProcessor processor = spy(new MessageToBlogPostProcessor(new MailConfigurationWrapper(mailConfiguration)));
-        doReturn(messageParser).when(processor).newMessageParser(any(Message.class), any(MailConfigurationWrapper.class));
+        MessageToContentProcessor processor = spy(new MessageToContentProcessor(mailConfigurationWrapper));
         autowire(processor);
 
         // Process message.
-        processor.process(space, message);
+        processor.process(space, message, ContentTypes.Page);
 
         // Capture the saved blog post.
-        ArgumentCaptor<BlogPost> argBlog = ArgumentCaptor.forClass(BlogPost.class);
-        verify(pageManager).saveContentEntity(argBlog.capture(), isA(DefaultSaveContext.class));
+        ArgumentCaptor<Page> argPage = ArgumentCaptor.forClass(Page.class);
+        verify(pageManager).saveContentEntity(argPage.capture(), isA(DefaultSaveContext.class));
 
         assertTrue(
             "Gallery macro not added to blog post",
-            argBlog.getValue().getBodyAsString().contains("<ac:structured-macro ac:name=\"gallery\"")
+            argPage.getValue().getBodyAsString().contains("<ac:structured-macro ac:name=\"gallery\"")
         );
     }
 
@@ -173,17 +224,14 @@ public class MessageToBlogPostProcessorTest
      */
     @Test
     public void testHtmlMacro() throws Exception {
-        MailConfiguration mailConfiguration = MailConfiguration.builder()
-        .htmlmacro(true)
-        .build();
+        mailConfigurationWrapper.getMailConfiguration().setHtmlmacro(true);
 
         // Generate processor.
-        MessageToBlogPostProcessor processor = spy(new MessageToBlogPostProcessor(new MailConfigurationWrapper(mailConfiguration)));
-        doReturn(messageParser).when(processor).newMessageParser(any(Message.class), any(MailConfigurationWrapper.class));
+        MessageToContentProcessor processor = spy(new MessageToContentProcessor(mailConfigurationWrapper));
         autowire(processor);
 
         // Process message.
-        processor.process(space, message);
+        processor.process(space, message, ContentTypes.BlogPost);
 
         // Capture the saved blog post.
         ArgumentCaptor<BlogPost> argBlog = ArgumentCaptor.forClass(BlogPost.class);
@@ -200,23 +248,20 @@ public class MessageToBlogPostProcessorTest
      */
     @Test
     public void testDisallowAnnonymous() throws Exception {
-        MailConfiguration mailConfiguration = MailConfiguration.builder()
-        .securityGroup("confluence-users")
-        .build();
+        mailConfigurationWrapper.getMailConfiguration().setSecurityGroup("confluence-users");
 
         // Set user to null.
         user = null;
 
         // Generate processor.
-        MessageToBlogPostProcessor processor = spy(new MessageToBlogPostProcessor(new MailConfigurationWrapper(mailConfiguration)));
-        doReturn(messageParser).when(processor).newMessageParser(any(Message.class), any(MailConfigurationWrapper.class));
+        MessageToContentProcessor processor = spy(new MessageToContentProcessor(mailConfigurationWrapper));
         autowire(processor);
 
         // Try processing message.
         try {
-            processor.process(space, message);
+            processor.process(space, message, ContentTypes.BlogPost);
             fail("No exception thrown");
-        } catch (MessageToBlogPostProcessorException e) {}
+        } catch (MessageToContentProcessorException e) {}
     }
 
     /**
@@ -224,22 +269,19 @@ public class MessageToBlogPostProcessorTest
      */
     @Test
     public void testAllowAnnonymous() throws Exception {
-        MailConfiguration mailConfiguration = MailConfiguration.builder()
-        .securityGroup("")
-        .build();
+        mailConfigurationWrapper.getMailConfiguration().setSecurityGroup("");
 
         // Set user to null.
         user = null;
 
         // Generate processor.
-        MessageToBlogPostProcessor processor = spy(new MessageToBlogPostProcessor(new MailConfigurationWrapper(mailConfiguration)));
-        doReturn(messageParser).when(processor).newMessageParser(any(Message.class), any(MailConfigurationWrapper.class));
+        MessageToContentProcessor processor = spy(new MessageToContentProcessor(mailConfigurationWrapper));
         autowire(processor);
 
         // Try processing message.
         try {
-            processor.process(space, message);
-        } catch (MessageToBlogPostProcessorException e) {
+            processor.process(space, message, ContentTypes.BlogPost);
+        } catch (MessageToContentProcessorException e) {
             fail("Failed to post");
         }
     }
@@ -249,23 +291,20 @@ public class MessageToBlogPostProcessorTest
      */
     @Test
     public void testUserNotInGroup() throws Exception {
-        MailConfiguration mailConfiguration = MailConfiguration.builder()
-        .securityGroup("mail2blog")
-        .build();
+        mailConfigurationWrapper.getMailConfiguration().setSecurityGroup("mail2blog");
 
         when(groupManager.getGroup("mail2blog")).thenReturn(group);
         when(groupManager.hasMembership(group, user)).thenReturn(false);
 
         // Generate processor.
-        MessageToBlogPostProcessor processor = spy(new MessageToBlogPostProcessor(new MailConfigurationWrapper(mailConfiguration)));
-        doReturn(messageParser).when(processor).newMessageParser(any(Message.class), any(MailConfigurationWrapper.class));
+        MessageToContentProcessor processor = spy(new MessageToContentProcessor(mailConfigurationWrapper));
         autowire(processor);
 
         // Try processing message.
         try {
-            processor.process(space, message);
+            processor.process(space, message, ContentTypes.BlogPost);
             fail("No exception thrown");
-        } catch (MessageToBlogPostProcessorException e) {}
+        } catch (MessageToContentProcessorException e) {}
     }
 
     /**
@@ -273,22 +312,19 @@ public class MessageToBlogPostProcessorTest
      */
     @Test
     public void testUserInGroup() throws Exception {
-        MailConfiguration mailConfiguration = MailConfiguration.builder()
-        .securityGroup("confluence-administrators")
-        .build();
+        mailConfigurationWrapper.getMailConfiguration().setSecurityGroup("confluence-administrators");
 
         when(groupManager.getGroup("confluence-administrators")).thenReturn(group);
         when(groupManager.hasMembership(group, user)).thenReturn(true);
 
         // Generate processor.
-        MessageToBlogPostProcessor processor = spy(new MessageToBlogPostProcessor(new MailConfigurationWrapper(mailConfiguration)));
-        doReturn(messageParser).when(processor).newMessageParser(any(Message.class), any(MailConfigurationWrapper.class));
+        MessageToContentProcessor processor = spy(new MessageToContentProcessor(mailConfigurationWrapper));
         autowire(processor);
 
         // Try processing message.
         try {
-            processor.process(space, message);
-        } catch (MessageToBlogPostProcessorException e) {
+            processor.process(space, message, ContentTypes.BlogPost);
+        } catch (MessageToContentProcessorException e) {
             fail("Failed to post");
         }
     }

@@ -1,13 +1,13 @@
-<h1 align="center">Mail2Blog</h1>
+<h1 align="center">Email to Confluence</h1>
 
 <p align="center">
     <img src="doc/mail2blog-logo.jpg" alt="Logo" width="33%">
     <br>
-    <a href="https://travis-ci.org/dm-drogeriemarkt/Mail2Blog"><img src="https://travis-ci.org/dm-drogeriemarkt/Mail2Blog.svg?branch=master" alt="Build Status"></a>
-    <a href="https://codecov.io/gh/dm-drogeriemarkt/Mail2Blog"><img src="https://img.shields.io/codecov/c/github/dm-drogeriemarkt/Mail2Blog.svg" alt="Build Status"></a>
+    <a href="https://travis-ci.org/dm-drogeriemarkt/Email-to-Confluence"><img src="https://travis-ci.org/dm-drogeriemarkt/Email-to-Confluence.svg?branch=master" alt="Build Status"></a>
+    <a href="https://codecov.io/gh/dm-drogeriemarkt/Email-to-Confluence"><img src="https://img.shields.io/codecov/c/github/dm-drogeriemarkt/Email-to-Confluence.svg" alt="Build Status"></a>
 </p>
 
-Send email to Confluence. This add-on converts emails to Confluence blog posts. Store and reference your weekly/daily/monthly newsletters in Confluence.
+Send email to Confluence. This add-on converts emails to Confluence pages or blog posts. Store and reference your weekly/daily/monthly newsletters in Confluence.
 
 <p align="center">
     <img width="33%" src="doc/example-blog-post.jpg">
@@ -44,7 +44,7 @@ From now on **every 5 minutes** Confluence will pull messages from your **INBOX*
 and post them as blog posts into the default space.
 
 The configuration is explained on the configuration page.
-The advanced configuration options are explained [here](doc/advanced_configuration.md).
+Formatting options are explained in detail [here](doc/formatting.md).
 
 ## Further Information
 - [Formatting](doc/formatting.md)
@@ -59,4 +59,37 @@ The advanced configuration options are explained [here](doc/advanced_configurati
 
 The project started off as a fork of the [Confluence-Mail-to-News-Plugin](https://github.com/stimmt/Confluence-Mail-to-News-Plugin) by Liip AG.
 But the source code has been completely refactored and we added plenty of new features, bugfixes and tests.
-The plugins aren't compatible to another anymore. Therefore we decided to publish this project on its own.
+The plugins are not compatible to another anymore. Therefore we decided to publish this project on its own.
+
+Formerly this plugin was named Mail2Blog, but since version 2.0 this plugin is capable of creating pages and blog posts
+and was renamed to Email to Confluence.
+
+## License
+Original work Copyright (c) 2008, Liip AG
+Modified work 2017 dm-drogerie markt GmbH & Co. KG, https://dm.de
+
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+- Redistributions of source code must retain the above copyright notice,
+  this list of conditions and the following disclaimer.
+- Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+- Neither the name of the copyright holder nor the names of its contributors
+  may be used to endorse or promote products derived from this software
+  without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

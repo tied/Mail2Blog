@@ -70,6 +70,23 @@ function help {
     echo "Example: ./integration-test.sh -version 6.8.0 -timeout-startup 500 -timeout-test 1000"
 }
 
+integration_test_status=0
+
+function run_integration_test {
+    # Run integration test
+    test="$1"
+    echo "[INFO] running test $test"
+    response=$(curl -f -u admin:admin -H "Accept: application/xml" "http://127.0.0.1:1990/confluence/rest/mail2blog-tests/1.0/runtest/$test")
+
+    if echo $response | grep '<successful>true</successful>' > /dev/null 2>&1; then
+        echo "[INFO] test $test was successful"
+    else
+        echo "[ERROR] test $test failed"
+        integration_test_status=5
+        echo "$response"
+    fi
+}
+
 # Shutdown confluence on exit
 trap shutdown_confluence EXIT
 
@@ -185,14 +202,6 @@ if [ "$confluence_ready" -eq 0 ]; then
     exit 4
 fi
 
-# Run integration test
-echo "[INFO] running integration test"
-response=$(curl -f -u admin:admin -H "Accept: application/xml" http://127.0.0.1:1990/confluence/rest/mail2blog-tests/1.0/runtest/testProcess)
-echo $response
-
-if echo $response | grep '<successful>true</successful>' > /dev/null 2>&1; then
-    echo "[INFO] test was successful"
-else
-    echo "[ERROR] test failed"
-    exit 5
-fi
+run_integration_test "testProcessImaps"
+run_integration_test "testProcessPop3"
+exit $integration_test_status

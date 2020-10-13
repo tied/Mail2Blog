@@ -1,10 +1,13 @@
 package de.dm.mail2blog;
 
+import com.atlassian.confluence.spaces.SpaceManager;
 import com.atlassian.plugin.spring.scanner.annotation.export.ExportAsService;
+import com.atlassian.plugin.spring.scanner.annotation.imports.ComponentImport;
 import com.atlassian.sal.api.transaction.TransactionTemplate;
 import com.atlassian.scheduler.JobRunner;
 import com.atlassian.scheduler.JobRunnerRequest;
 import com.atlassian.scheduler.JobRunnerResponse;
+import de.dm.mail2blog.base.SpaceExtractor;
 import lombok.Cleanup;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -14,7 +17,7 @@ import org.springframework.stereotype.Component;
 import javax.mail.Message;
 
 /**
- * The job triggered by confluence that polls for new messages and creates blog posts.
+ * The job triggered by confluence that polls for new messages and creates pages/blog posts.
  */
 @Slf4j
 @Component
@@ -22,15 +25,16 @@ import javax.mail.Message;
 public class Mail2BlogJob implements JobRunner
 {
     // Auto wired components.
-    @Setter @Autowired          private GlobalState globalState;
-    @Setter @Autowired          private SpaceKeyExtractor spaceKeyExtractor;
+    @Setter @Autowired private GlobalState globalState;
+    @Setter @Autowired private SpaceKeyValidator spaceKeyValidator;
+    @Setter @Autowired private SpaceManager spaceManager;
 
     /**
      * The main method of this job.
      * Called by confluence every time the mail2blog trigger fires.
      */
     public JobRunnerResponse runJob(JobRunnerRequest jobRunnerRequest) {
-        log.info("Mail2Blog: Executing job");
+        log.info("Mail2Blog: executing job");
 
         if ("true".equals(systemGetProperty("atlassian.mail.fetchdisabled"))) {
             return JobRunnerResponse.aborted("Aborting because of atlassian.mail.fetchdisabled=true.");
@@ -54,15 +58,16 @@ public class Mail2BlogJob implements JobRunner
 
                 // Process message.
                 MessageTransaction transaction = MessageTransaction.builder()
-                .spaceKeyExtractor(spaceKeyExtractor)
+                .spaceExtractor(new SpaceExtractor(spaceKeyValidator))
+                .spaceManager(spaceManager)
                 .mailConfigurationWrapper(mailConfigurationWrapper)
                 .mailbox(mailbox)
                 .message(message)
                 .build();
                 getTransactionTemplate().execute(transaction);
             }
-        } catch (Exception e) {
-            log.error("Mail2Blog: " + e.getMessage(), e);
+        } catch (Throwable e) {
+            log.error("Mail2Blog: " + e.toString(), e);
             return JobRunnerResponse.failed(e);
         }
 

@@ -1,4 +1,4 @@
-package ut.de.dm.mail2blog;
+package de.dm.mail2blog;
 
 import com.atlassian.confluence.spaces.Space;
 import com.atlassian.confluence.spaces.SpaceManager;
@@ -6,21 +6,32 @@ import com.atlassian.json.jsonorg.JSONObject;
 import com.atlassian.user.Group;
 import com.atlassian.user.GroupManager;
 import com.atlassian.user.search.page.Pager;
-import de.dm.mail2blog.*;
+import de.dm.mail2blog.base.SpaceRule;
+import de.dm.mail2blog.base.SpaceRuleSpaces;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
 import java.beans.BeanInfo;
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
 import java.lang.reflect.Method;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Hashtable;
+import java.util.Map;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.MockitoAnnotations.initMocks;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ConfigurationActionTest
@@ -34,8 +45,9 @@ public class ConfigurationActionTest
     private static final String GROUP1 = "Engineers";
     private static final String GROUP2 = "Cooks";
 
-    GroupManager groupManager = mock(GroupManager.class);
-    SpaceManager spaceManager = mock(SpaceManager.class);
+    @Mock GroupManager groupManager;
+    @Mock SpaceManager spaceManager;
+    @Mock GlobalState globalState;
 
     ConfigurationAction configurationAction;
     MailConfiguration mailConfiguration;
@@ -47,10 +59,12 @@ public class ConfigurationActionTest
         configurationAction.setSpaceManager(spaceManager);
         configurationAction.setCheckboxTracker(checkboxTracker);
 
+        SpaceKeyValidator spaceKeyValidator = new SpaceKeyValidator(spaceManager);
+        configurationAction.setSpaceKeyValidator(spaceKeyValidator);
+
         mailConfiguration = MailConfiguration.builder().build();
         MailConfigurationWrapper wrapper = new MailConfigurationWrapper(mailConfiguration);
 
-        GlobalState globalState = mock(GlobalState.class);
         when(globalState.getMailConfigurationWrapper()).thenReturn(wrapper);
 
         ConfigurationActionState actionState = new ConfigurationActionState();
@@ -102,6 +116,8 @@ public class ConfigurationActionTest
 
     @Before
     public void setUp() throws Exception {
+        initMocks(this);
+
         setUpCheckboxTracker();
         setUpSpaceManager();
         setUpGroupManager();
@@ -192,6 +208,9 @@ public class ConfigurationActionTest
         assertValidate("mailConfiguration.defaultSpace", SPACE2_KEY, true);
         assertValidate("mailConfiguration.defaultSpace", "bogus", false);
         assertValidate("mailConfiguration.defaultSpace", "", false);
+        assertValidate("mailConfiguration.defaultContentType", "blog", true);
+        assertValidate("mailConfiguration.defaultContentType", "page", true);
+        assertValidate("mailConfiguration.defaultContentType", "bogus", false);
         assertValidate("mailConfiguration.maxAllowedAttachmentSize", 123, true);
         assertValidate("mailConfiguration.maxAllowedAttachmentSize", -1, false);
         assertValidate("mailConfiguration.maxAllowedAttachmentSize", 3000, false);
@@ -212,22 +231,23 @@ public class ConfigurationActionTest
      */
     @Test
     public void testValidateSpaceRules() throws Exception {
-        assertSpaceRule("from", "is", "alpha", "copy", SPACE1_KEY, true);
-        assertSpaceRule("to", "contains", "bravo", "move", SPACE1_KEY, true);
-        assertSpaceRule("cc", "start", "charlie", "copy", SPACE2_KEY, true);
-        assertSpaceRule("subject", "end", "delta", "copy", SPACE2_KEY, true);
+        assertSpaceRule("from", "is", "alpha", "copy", SPACE1_KEY, "blog", true);
+        assertSpaceRule("to", "contains", "bravo", "move", SPACE1_KEY, "blog", true);
+        assertSpaceRule("cc", "start", "charlie", "copy", SPACE2_KEY, "blog", true);
+        assertSpaceRule("subject", "end", "delta", "copy", SPACE2_KEY, "blog", true);
 
-        assertSpaceRule("from", "regexp", "^echo", "copy", SPACE1_KEY, true);
-        assertSpaceRule("from", "regexp", "echo$", "copy", SpaceRuleSpaces.CapturingGroup0, true);
-        assertSpaceRule("from", "regexp", "echo ([0-9]*)", "copy", SpaceRuleSpaces.CapturingGroup1, true);
+        assertSpaceRule("from", "regexp", "^echo", "copy", SPACE1_KEY, "blog", true);
+        assertSpaceRule("from", "regexp", "echo$", "copy", SpaceRuleSpaces.CapturingGroup0, "page", true);
+        assertSpaceRule("from", "regexp", "echo ([0-9]*)", "copy", SpaceRuleSpaces.CapturingGroup1, "page", true);
 
-        assertSpaceRule("bogus", "is", "alpha", "copy", SPACE1_KEY, false); // Invalid field
-        assertSpaceRule("from", "nonsense", "alpha", "copy", SPACE1_KEY, false); // Invalid operator
-        assertSpaceRule("from", "is", "alpha", "notworking", SPACE1_KEY, false); // Invalid action
-        assertSpaceRule("from", "is", "alpha", "copy", "nirvana", false); // Invalid space
-        assertSpaceRule("from", "is", "alpha", "copy", SpaceRuleSpaces.CapturingGroup0, false); // Capturing group not on regexp
-        assertSpaceRule("cc", "start", "charlie", "move", SpaceRuleSpaces.CapturingGroup1, false); // Capturing group not on regexp
-        assertSpaceRule("from", "regexp", "^(unclosed group", "copy", SPACE1_KEY, false); // Invalid regexp
+        assertSpaceRule("bogus", "is", "alpha", "copy", SPACE1_KEY, "blog", false); // Invalid field
+        assertSpaceRule("from", "nonsense", "alpha", "copy", SPACE1_KEY, "blog",false); // Invalid operator
+        assertSpaceRule("from", "is", "alpha", "notworking", SPACE1_KEY, "blog", false); // Invalid action
+        assertSpaceRule("from", "is", "alpha", "copy", "nirvana", "blog", false); // Invalid space
+        assertSpaceRule("from", "is", "alpha", "copy", SpaceRuleSpaces.CapturingGroup0, "blog",false); // Capturing group not on regexp
+        assertSpaceRule("cc", "start", "charlie", "move", SpaceRuleSpaces.CapturingGroup1, "blog",false); // Capturing group not on regexp
+        assertSpaceRule("from", "regexp", "^(unclosed group", "copy", SPACE1_KEY, "blog",false); // Invalid regexp
+        assertSpaceRule("from", "is", "alpha", "copy", SPACE1_KEY, "bogus", false); // Invalid contentType
     }
 
     /**
@@ -265,12 +285,13 @@ public class ConfigurationActionTest
     /**
      * Check that space rules are validated properly.
      */
-    private void assertSpaceRule(String field, String operator, String value, String action, String space, boolean expectedResult) throws Exception {
+    private void assertSpaceRule(String field, String operator, String value, String action, String space, String contentType, boolean expectedResult) throws Exception {
         configurationAction.setSpaceRuleFields(new String[]{field});
         configurationAction.setSpaceRuleOperators(new String[]{operator});
         configurationAction.setSpaceRuleValues(new String[]{value});
         configurationAction.setSpaceRuleActions(new String[]{action});
         configurationAction.setSpaceRuleSpaces(new String[]{space});
+        configurationAction.setSpaceRuleContentTypes(new String[]{contentType});
 
         // Reset errors and validate.
         configurationAction.setFieldErrors(new HashMap<String, String>());
@@ -289,6 +310,7 @@ public class ConfigurationActionTest
         jsonSpaceRule.put("value", value);
         jsonSpaceRule.put("action", action);
         jsonSpaceRule.put("space", space);
+        jsonSpaceRule.put("contentType", contentType);
 
         if (expectedResult) {
             assertTrue(

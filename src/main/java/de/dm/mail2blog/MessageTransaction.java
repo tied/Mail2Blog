@@ -1,49 +1,56 @@
 package de.dm.mail2blog;
 
 import com.atlassian.confluence.spaces.Space;
+import com.atlassian.confluence.spaces.SpaceManager;
 import com.atlassian.sal.api.transaction.TransactionCallback;
 import com.atlassian.spring.container.ContainerManager;
+import de.dm.mail2blog.base.SpaceExtractor;
+import de.dm.mail2blog.base.SpaceInfo;
 import lombok.Builder;
 import lombok.Getter;
-import lombok.NonNull;
-import lombok.extern.log4j.Log4j;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import javax.mail.Message;
 import java.util.List;
 
 /**
- * Transaction that processes an email message and creates a Confluence blog post from it.
+ * Transaction that processes an email message and creates Confluence pages/blog posts from it.
  * Called by Mail2BlogJob.
  */
-@Log4j
+@Slf4j
 @Builder
 public class MessageTransaction implements TransactionCallback<Void> {
-    @Getter @NonNull private Message message;
-    @Getter @NonNull private MailConfigurationWrapper mailConfigurationWrapper;
-    @Getter @NonNull private Mailbox mailbox;
-    @Getter @NonNull @Autowired private SpaceKeyExtractor spaceKeyExtractor;
+    @Getter private Message message;
+    @Getter private MailConfigurationWrapper mailConfigurationWrapper;
+    @Getter private Mailbox mailbox;
+    @Getter private SpaceExtractor spaceExtractor;
+    @Getter private SpaceManager spaceManager;
 
     public Void doInTransaction() {
         boolean status = true;
 
         try {
             // Get space
-            List<Space> spaces = spaceKeyExtractor.getSpaces(mailConfigurationWrapper, message);
+            List<SpaceInfo> spaceInfos = spaceExtractor.getSpaces(mailConfigurationWrapper.getMail2BlogBaseConfiguration(), message);
 
-            if (spaces.isEmpty()) {
-                log.error("Mail2Blog: Failed to process message. Failed to get a valid space.");
+            if (spaceInfos.isEmpty()) {
+                log.error("Mail2Blog: failed to process message. Failed to get a valid space.");
                 status = false;
             } else {
-                for (Space space : spaces) {
+                for (SpaceInfo spaceInfo : spaceInfos) {
                     // Process message.
-                    MessageToBlogPostProcessor processor = newMessageToBlogProcessor(mailConfigurationWrapper);
-                    processor.process(space, message);
+                    MessageToContentProcessor processor = newMessageToBlogProcessor(mailConfigurationWrapper);
+                    Space space = spaceManager.getSpace(spaceInfo.getSpaceKey());
+                    if (space == null) {
+                        log.error("Mail2Blog: invalid space in SpaceInfo");
+                    }
+                    processor.process(space, message, spaceInfo.getContentType());
                 }
             }
         } catch (Exception e) {
             status = false;
-            log.error("Mail2Blog: Failed to process message", e);
+            log.error("Mail2Blog: failed to process message", e);
         }
 
         try {
@@ -53,15 +60,15 @@ public class MessageTransaction implements TransactionCallback<Void> {
                 mailbox.flagAsInvalid(message);
             }
         } catch (Exception e) {
-            log.error("Mail2Blog: Failed to flag message", e);
+            log.error("Mail2Blog: failed to flag message", e);
         }
 
         return null;
     }
 
-    public MessageToBlogPostProcessor newMessageToBlogProcessor(MailConfigurationWrapper mailConfigurationWrapper)
+    public MessageToContentProcessor newMessageToBlogProcessor(MailConfigurationWrapper mailConfigurationWrapper)
     throws MailConfigurationManagerException {
-        MessageToBlogPostProcessor processor = new MessageToBlogPostProcessor(mailConfigurationWrapper);
+        MessageToContentProcessor processor = new MessageToContentProcessor(mailConfigurationWrapper);
         ContainerManager.autowireComponent(processor);
         return processor;
     }
